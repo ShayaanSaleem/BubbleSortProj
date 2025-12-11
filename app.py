@@ -4,40 +4,104 @@ import time
 import random
 from matplotlib.patches import FancyBboxPatch, Circle, Rectangle
 
-# --- Visualization constants --------------------------------------------------
+# =========================
+# Global constants
+# =========================
 
-MAX_STUDENTS = 100         # up to 100 students
+MAX_STUDENTS = 100
+
 PALETTE = [
-    "#ff0000",  # red
-    "#0000ff",  # blue
-    "#008000",  # green
-    "#ffd700",  # yellow (gold)
-    "#800080",  # purple
+    "#ff6b6b",  # soft red
+    "#4dabf7",  # sky blue
+    "#51cf66",  # fresh green
+    "#ffd43b",  # warm yellow
+    "#b197fc",  # lavender purple
 ]
 
+STEP_DELAY = 0.03   # delay after a single "Next step"
+RUN_DELAY = 0.06    # delay between frames in "Run to end"
 
-# --- Helpers -------------------------------------------------------------------
+CANCEL_FLAG = False  # used to stop long animations
+
+# =========================
+# Gradio CSS / theme
+# =========================
+
+custom_css = """
+body {
+    background: #fff3e0;
+}
+.gradio-container {
+    background: radial-gradient(circle at top left, #fff9f0 0, #ffe8d5 40%, #ffd7b8 100%);
+}
+/* General text colour */
+.gradio-container label,
+.gradio-container .gr-markdown,
+.gradio-container .gr-markdown *,
+.gradio-container .prose,
+.gradio-container .prose * {
+    color: #2b2b2b !important;
+}
+/* Inline code in markdown (e.g. `145, 162, 177`) */
+.gradio-container .gr-markdown code,
+.gradio-container .prose code {
+    background: #ffe6bf !important;
+    color: #2b2b2b !important;
+    border-radius: 4px !important;
+    padding: 0 3px !important;
+}
+/* Card-style boxes */
+.gr-box {
+    background: #fffdf7;
+    border-radius: 14px;
+    border: 1px solid #f1c9a5;
+}
+/* Buttons */
+button, .gr-button {
+    border-radius: 999px !important;
+    border: 1px solid #f5b26b !important;
+    background: #ffc46b !important;
+    color: #4a2c16 !important;
+    font-weight: 600 !important;
+}
+button:hover, .gr-button:hover {
+    background: #ffb347 !important;
+}
+/* Slider track */
+input[type="range"] {
+    accent-color: #ffb347;
+}
+/* Number inputs for heights */
+input[type="number"] {
+    background: #fffdf7;
+    border-radius: 8px;
+    border: 1px solid #f1c9a5;
+    color: #2b2b2b;
+}
+/* Explanation panel */
+.gr-markdown {
+    background: #fffdf7;
+    border-radius: 14px;
+    border: 1px solid #f1c9a5;
+    padding: 12px;
+}
+"""
+
+# =========================
+# Helper functions
+# =========================
 
 def cm_to_feet_inches(cm_val: int) -> str:
-    """Convert a height in cm to a string like 5'11"."""
+    """Convert centimetres to a string like 5'11"."""
     total_inches = int(round(cm_val / 2.54))
     feet = total_inches // 12
     inches = total_inches % 12
     return f"{feet}'{inches}\""
 
 
-def draw_characters(
-    heights,
-    colors=None,
-    current_j=None,
-    sorted_tail=0,  # kept for compatibility; not used for coloring now
-    initialized=False,
-):
+def draw_characters(heights, colors=None, current_j=None, sorted_tail=0, initialized=False):
     """
-    Draw the line of "students" in front of a police-style height wall.
-    Left: cm. Right: feet + inches.
-    Person height is mapped directly to the wall marks (140–240 cm).
-    Colors come from 'colors' list (cycled red/blue/green/yellow/purple).
+    Draw the wall + all people, with heights mapped to the wall lines.
     """
     plt.close("all")
 
@@ -49,27 +113,25 @@ def draw_characters(
     fig_width = min(18, max(10, n * 0.4))
     fig, ax = plt.subplots(figsize=(fig_width, 6))
 
-    fig.patch.set_facecolor("#e8e8e8")   # outer background
-    ax.set_facecolor("#f5f0e7")          # wall colour
+    fig.patch.set_facecolor("#fff9f0")
+    ax.set_facecolor("#fffdf7")
 
     ax.set_xlim(-0.75, n - 0.25)
-    ax.set_ylim(-0.25, 1.6)  # little extra space below for feet
+    ax.set_ylim(-0.35, 1.6)
     ax.set_axis_off()
     ax.set_aspect("equal", adjustable="box")
 
-    # -----------------------------
-    # Height wall definition
-    # -----------------------------
-    num_lines = 11            # 140, 150, ..., 240
+    # ----- height wall -----
+    num_lines = 11          # 140, 150, ..., 240
     cm_start = 140
     step_cm = 10
-    cm_end = cm_start + step_cm * (num_lines - 1)  # 240
+    cm_end = cm_start + step_cm * (num_lines - 1)
 
-    y_bottom = 0.25           # y position for 140 cm line
-    y_top = 1.35              # y position for 240 cm line
+    y_bottom = 0.25         # y for 140 cm
+    y_top = 1.35            # y for 240 cm
 
     def cm_to_y(cm_val: float) -> float:
-        """Map a cm height onto [y_bottom, y_top]."""
+        """Map a cm value to the vertical range of the wall."""
         cm_clamped = max(cm_start, min(cm_end, cm_val))
         t = (cm_clamped - cm_start) / (cm_end - cm_start)
         return y_bottom + t * (y_top - y_bottom)
@@ -79,7 +141,6 @@ def draw_characters(
         for i in range(num_lines)
     ]
 
-    # draw wall lines + labels (zorder=1 so people can go in front)
     for i, y in enumerate(ys):
         cm_val = cm_start + step_cm * i
         base_bold = (i % 2 == 0)
@@ -94,58 +155,51 @@ def draw_characters(
             y,
             -0.6,
             n - 0.1,
-            colors="black",
+            colors="#3b3b3b",
             linewidth=line_width,
             zorder=1,
         )
 
-        left_label = f"{cm_val} cm"
         ax.text(
             -0.75,
             y,
-            left_label,
+            f"{cm_val} cm",
             ha="right",
             va="center",
             fontsize=font_size,
-            color="black",
+            color="#3b3b3b",
             fontweight=font_weight,
             zorder=3,
         )
 
-        right_label = cm_to_feet_inches(cm_val)
         ax.text(
             n + 0.05,
             y,
-            right_label,
+            cm_to_feet_inches(cm_val),
             ha="left",
             va="center",
             fontsize=font_size,
-            color="black",
+            color="#3b3b3b",
             fontweight=font_weight,
             zorder=3,
         )
 
-    # -----------------------------
-    # Colors (per person, following the palette)
-    # -----------------------------
+    # ----- colours for people -----
     if not initialized:
-        base_colors = ["#cccccc"] * n
+        base_colors = ["#d0d0d0"] * n
     else:
         if colors is None or len(colors) != n:
             base_colors = [PALETTE[i % len(PALETTE)] for i in range(n)]
         else:
             base_colors = list(colors)
 
-    # Which indices are currently being compared
     highlight_indices = set()
     if initialized and current_j is not None:
         for idx in (current_j, current_j + 1):
             if 0 <= idx < n:
                 highlight_indices.add(idx)
 
-    # -----------------------------
-    # Draw each person (no arms)
-    # -----------------------------
+    # ----- draw people -----
     if n <= 20:
         base_body_width = 0.5
     elif n <= 60:
@@ -153,7 +207,8 @@ def draw_characters(
     else:
         base_body_width = 0.2
 
-    feet_y = -0.10  # floor line
+    feet_y = -0.20
+    max_body_height = cm_to_y(cm_end) - feet_y
 
     for i in range(n):
         color = base_colors[i]
@@ -168,37 +223,36 @@ def draw_characters(
             total_body_height = 0.35
             head_top_y = feet_y + total_body_height
 
-        # proportions
-        leg_height = total_body_height * 0.3
+        # height split into legs / torso / head
+        leg_height = total_body_height * 0.4
         torso_height = total_body_height * 0.4
-        head_height = total_body_height * 0.3
+        head_height = total_body_height * 0.2
 
-        body_width = base_body_width
+        # shorter people are also a bit slimmer
+        if initialized and heights[i] is not None and max_body_height > 0:
+            height_ratio = total_body_height / max_body_height
+            height_ratio = max(0.0, min(1.0, height_ratio))
+            width_scale = 0.5 + 0.5 * height_ratio
+            body_width = base_body_width * width_scale
+        else:
+            body_width = base_body_width * 0.7
+
         leg_width = body_width * 0.22
 
-        # vertical layout
         leg_bottom = feet_y
         leg_top = leg_bottom + leg_height
         torso_bottom = leg_top
         torso_top = torso_bottom + torso_height
         head_bottom = torso_top
-
-        if initialized and heights[i] is not None:
-            head_top = head_top_y
-            head_height = max(0.05, head_top - head_bottom)
-        else:
-            head_top = head_bottom + head_height
+        head_top = head_bottom + head_height
 
         head_radius = head_height / 2
         head_center_y = head_bottom + head_radius
 
-        # outline style: same colour as body; highlighted ones just thicker
         edge_color = color
         edge_width = 2.0 if i in highlight_indices else 0.9
+        z = 2
 
-        z = 2  # zorder for bodies so they sit on top of lines
-
-        # torso
         torso_left = i - body_width / 2
         torso = FancyBboxPatch(
             (torso_left, torso_bottom),
@@ -212,7 +266,6 @@ def draw_characters(
         )
         ax.add_patch(torso)
 
-        # legs
         left_leg_x = i - body_width * 0.28
         right_leg_x = i + body_width * 0.06
         left_leg = Rectangle(
@@ -236,7 +289,6 @@ def draw_characters(
         ax.add_patch(left_leg)
         ax.add_patch(right_leg)
 
-        # head
         head = Circle(
             (i, head_center_y),
             head_radius,
@@ -247,29 +299,28 @@ def draw_characters(
         )
         ax.add_patch(head)
 
-        # numeric height label
         if initialized and heights[i] is not None:
+            label_y = cm_to_y(heights[i])
             ax.text(
                 i,
-                head_top_y + 0.03,
+                label_y + 0.03,
                 f"{heights[i]}",
                 ha="center",
                 va="bottom",
                 fontsize=8 if n > 40 else 10,
-                color="black",
+                color="#3b3b3b",
                 fontweight="bold",
                 zorder=4,
             )
 
-        # index at feet
         ax.text(
             i,
             feet_y - 0.03,
-            f"{i}",
+            f"Person {i+1}",
             ha="center",
             va="top",
             fontsize=8,
-            color="black",
+            color="#3b3b3b",
             zorder=4,
         )
 
@@ -277,16 +328,97 @@ def draw_characters(
         "Bubble Height Sorter",
         fontsize=16,
         pad=12,
-        color="black",
+        color="#3b3b3b",
         fontweight="bold",
     )
     plt.tight_layout()
     return fig
 
 
-# --- Bubble sort state + step logic -------------------------------------------
+def make_explanation(state):
+    """Return the Markdown explanation text for the current sort state."""
+    base = (
+        "### Bubble Height Sorter\n\n"
+        "- We’re using **Bubble Sort** to line students up from **shortest to tallest**.\n"
+        "- Bubble Sort looks at **neighbours from left to right**.\n"
+        "- If the person on the left is **taller** than the person on the right, they **swap places**.\n"
+        "- After each full pass, the tallest person so far has \"**bubbled**\" to the right end.\n"
+        "- The algorithm stops when it finishes a pass with **no swaps**.\n\n"
+    )
+
+    if state is None or not state.get("initialized", False):
+        return base + (
+            "Right now there is no active sorting step.\n\n"
+            "**How to use this tool:**\n"
+            "1. Choose the number of students with the slider.\n"
+            "2. Type heights (in cm) into the boxes for Person 1, Person 2, etc., or click **Randomize heights**.\n"
+            "3. Click **Set heights** to place them in front of the wall.\n"
+            "4. Use **Next step** to watch Bubble Sort one comparison at a time, "
+            "or **Run to end** to watch the full sort.\n"
+        )
+
+    heights = state["heights"]
+    n = state["n"]
+    i = state["pass_index"]
+    j = state["inner_index"]
+    sorted_tail = state["sorted_tail"]
+    done = state["done"]
+
+    heights_str = ", ".join(str(h) for h in heights)
+
+    if done:
+        return base + (
+            f"**Sorting is finished.**\n\n"
+            f"- The students are now in order from **shortest to tallest**.\n"
+            f"- Heights from left to right: `{heights_str}`.\n\n"
+            "In Bubble Sort terms:\n"
+            f"- We completed {i} full pass(es), and the last pass had **no swaps**, "
+            "so the algorithm knows the list is sorted.\n"
+        )
+
+    pass_num = i + 1
+    total_passes = max(1, n - 1)
+
+    if j < n - 1 - i:
+        idx_left = j
+        idx_right = j + 1
+        h_left = heights[idx_left]
+        h_right = heights[idx_right]
+        person_left = idx_left + 1
+        person_right = idx_right + 1
+
+        return base + (
+            f"**Current status:**\n\n"
+            f"- We are on **pass {pass_num}** out of at most **{total_passes}**.\n"
+            f"- Comparing **Person {person_left}** (height `{h_left} cm`) "
+            f"and **Person {person_right}** (height `{h_right} cm`).\n"
+            "- If the person on the left is taller, they swap. If not, they stay in place.\n\n"
+            "Bubble Sort perspective:\n"
+            f"- This comparison is at inner index **j = {j}**, pass **i = {i}**.\n"
+            f"- The last **{sorted_tail}** people on the right are already in their final place.\n\n"
+            f"Heights left to right now: `{heights_str}`.\n"
+        )
+    else:
+        return base + (
+            f"**Completed pass {pass_num}.**\n\n"
+            f"- After this pass, the tallest unsorted student has moved into position on the **right**.\n"
+            f"- Now there are **{sorted_tail}** student(s) at the right end that are guaranteed sorted.\n\n"
+            "Bubble Sort perspective:\n"
+            f"- We finished scanning neighbours up to index `{n - 1 - i}`.\n"
+            "- The next pass will scan a slightly shorter portion of the line, "
+            "because the rightmost students are already in place.\n\n"
+            f"Heights left → right right now: `{heights_str}`.\n"
+        )
+
+
+INITIAL_EXPLANATION = make_explanation(None)
+
+# =========================
+# Bubble Sort state / logic
+# =========================
 
 def init_state_from_numbers(num_students, *height_values):
+    """Read slider + inputs and create the initial sort state."""
     try:
         n = int(num_students)
     except Exception:
@@ -297,13 +429,15 @@ def init_state_from_numbers(num_students, *height_values):
 
     if any(h is None for h in selected):
         fig = draw_characters([0] * n, initialized=False)
-        return fig, None
+        explanation = make_explanation(None)
+        return fig, None, explanation
 
     try:
         heights = [int(h) for h in selected]
     except ValueError:
         fig = draw_characters([0] * n, initialized=False)
-        return fig, None
+        explanation = make_explanation(None)
+        return fig, None, explanation
 
     colors = [PALETTE[i % len(PALETTE)] for i in range(n)]
 
@@ -321,13 +455,16 @@ def init_state_from_numbers(num_students, *height_values):
     }
 
     fig = draw_characters(heights, colors=colors, current_j=0, sorted_tail=0, initialized=True)
-    return fig, state
+    explanation = make_explanation(state)
+    return fig, state, explanation
 
 
 def _bubble_sort_step_once(state):
+    """Perform one Bubble Sort step and update the state."""
     if state is None or not state.get("initialized", False):
         fig = draw_characters([], initialized=False)
-        return fig, state
+        explanation = make_explanation(state)
+        return fig, state, explanation
 
     heights = state["heights"]
     colors = state.get("colors", [PALETTE[i % len(PALETTE)] for i in range(state["n"])])
@@ -342,11 +479,11 @@ def _bubble_sort_step_once(state):
         fig = draw_characters(
             heights, colors=colors, current_j=None, sorted_tail=sorted_tail, initialized=True
         )
-        return fig, state
+        explanation = make_explanation(state)
+        return fig, state, explanation
 
     if j < n - 1 - i:
         if heights[j] > heights[j + 1]:
-            # swap heights AND colors so the same person keeps their colour
             heights[j], heights[j + 1] = heights[j + 1], heights[j]
             colors[j], colors[j + 1] = colors[j + 1], colors[j]
             swapped_in_pass = True
@@ -369,7 +506,8 @@ def _bubble_sort_step_once(state):
             sorted_tail=sorted_tail,
             initialized=True,
         )
-        return fig, state
+        explanation = make_explanation(state)
+        return fig, state, explanation
 
     else:
         sorted_tail = i + 1
@@ -405,19 +543,26 @@ def _bubble_sort_step_once(state):
             sorted_tail=sorted_tail,
             initialized=True,
         )
-        return fig, state
+        explanation = make_explanation(state)
+        return fig, state, explanation
 
 
 def bubble_sort_step_stream(state):
-    fig, new_state = _bubble_sort_step_once(state)
-    time.sleep(0.05)
-    yield fig, new_state
+    """Generator used by the Next step button."""
+    fig, new_state, explanation = _bubble_sort_step_once(state)
+    time.sleep(STEP_DELAY)
+    yield fig, new_state, explanation
 
 
 def run_to_end(state):
+    """Run Bubble Sort until finished or until cancelled by Reset."""
+    global CANCEL_FLAG
+    CANCEL_FLAG = False
+
     if state is None or not state.get("initialized", False):
         fig = draw_characters([], initialized=False)
-        yield fig, state
+        explanation = make_explanation(state)
+        yield fig, state, explanation
         return
 
     heights = state["heights"]
@@ -430,16 +575,24 @@ def run_to_end(state):
         sorted_tail=state["sorted_tail"],
         initialized=True,
     )
-    yield fig, state
-    time.sleep(0.15)
+    explanation = make_explanation(state)
+    yield fig, state, explanation
+    time.sleep(RUN_DELAY)
 
-    while not state["done"]:
-        fig, state = _bubble_sort_step_once(state)
-        yield fig, state
-        time.sleep(0.15)
+    while not state["done"] and not CANCEL_FLAG:
+        fig, state, explanation = _bubble_sort_step_once(state)
+        yield fig, state, explanation
+        time.sleep(RUN_DELAY)
 
 
 def reset_app(num_students):
+    """
+    Reset for the given number of students:
+    stop animation, clear inputs, show grey placeholders.
+    """
+    global CANCEL_FLAG
+    CANCEL_FLAG = True
+
     try:
         n = int(num_students)
     except Exception:
@@ -447,32 +600,25 @@ def reset_app(num_students):
     n = max(2, min(MAX_STUDENTS, n))
 
     fig = draw_characters([0] * n, initialized=False)
-    return fig, None
+    explanation = make_explanation(None)
 
-
-def update_inputs_visibility(num_students):
-    try:
-        n = int(num_students)
-    except Exception:
-        n = 6
-    n = max(2, min(MAX_STUDENTS, n))
-
-    updates = []
+    input_updates = []
     for i in range(MAX_STUDENTS):
         if i < n:
-            updates.append(gr.update(visible=True))
+            input_updates.append(gr.update(value=None, visible=True))
         else:
-            updates.append(gr.update(visible=False, value=None))
-    return updates
+            input_updates.append(gr.update(value=None, visible=False))
+
+    return (fig, None, explanation, *input_updates)
 
 
 def init_app(num_students):
-    fig, state = reset_app(num_students)
-    vis_updates = update_inputs_visibility(num_students)
-    return (fig, state, *vis_updates)
+    """Initial load behaves like a reset."""
+    return reset_app(num_students)
 
 
 def randomize_heights(num_students, *current_values):
+    """Random heights, update inputs, and initialise Bubble Sort state."""
     try:
         n = int(num_students)
     except Exception:
@@ -496,6 +642,7 @@ def randomize_heights(num_students, *current_values):
     }
 
     fig = draw_characters(heights, colors=colors, current_j=0, sorted_tail=0, initialized=True)
+    explanation = make_explanation(state)
 
     updates = []
     for i in range(MAX_STUDENTS):
@@ -504,90 +651,107 @@ def randomize_heights(num_students, *current_values):
         else:
             updates.append(gr.update(value=None, visible=False))
 
-    return (fig, state, *updates)
+    return (fig, state, explanation, *updates)
 
 
-# --- Gradio interface ---------------------------------------------------------
+# =========================
+# Gradio UI wiring
+# =========================
 
+theme = gr.themes.Soft(
+    primary_hue="orange",
+    secondary_hue="blue",
+    neutral_hue="gray",
+)
 
-with gr.Blocks() as demo:
-    num_students_input = gr.Slider(
-        minimum=2,
-        maximum=MAX_STUDENTS,
-        value=6,
-        step=1,
-        label="Number of students in the line",
-    )
-
-    plot_output = gr.Plot(
-        label="Height line-up visualization",
-    )
-
-    heights_inputs = []
-    rows = 10
-    cols = 10
-    for r in range(rows):
-        with gr.Row():
-            for c in range(cols):
-                idx = r * cols + c
-                num = gr.Number(label=str(idx), precision=0, visible=(idx < 6))
-                heights_inputs.append(num)
-
+with gr.Blocks(theme=theme, css=custom_css) as demo:
     with gr.Row():
-        set_button = gr.Button("Set heights")
-        random_button = gr.Button("Randomize heights")
-        step_button = gr.Button("Next step")
-        run_button = gr.Button("Run to end")
-        reset_button = gr.Button("Reset")
+        # left side: main UI
+        with gr.Column(scale=3):
+            num_students_input = gr.Slider(
+                minimum=2,
+                maximum=MAX_STUDENTS,
+                value=6,
+                step=1,
+                label="Number of students in the line",
+            )
+
+            plot_output = gr.Plot(
+                label="Height line-up visualization",
+            )
+
+            with gr.Row():
+                set_button = gr.Button("Set heights")
+                random_button = gr.Button("Randomize heights")
+                step_button = gr.Button("Next step")
+                run_button = gr.Button("Run to end")
+                reset_button = gr.Button("Reset")
+
+            heights_inputs = []
+            rows = 10
+            cols = 10
+            for r in range(rows):
+                with gr.Row():
+                    for c in range(cols):
+                        idx = r * cols + c
+                        num = gr.Number(
+                            label=f"P{idx+1}",
+                            precision=0,
+                            visible=(idx < 6),
+                            scale=1,
+                            min_width=70,
+                        )
+                        heights_inputs.append(num)
+
+        # right side: explanation
+        with gr.Column(scale=2):
+            explanation_md = gr.Markdown(
+                value=INITIAL_EXPLANATION,
+                label="What Bubble Sort is doing",
+            )
 
     algo_state = gr.State()
 
     set_button.click(
         fn=init_state_from_numbers,
         inputs=[num_students_input] + heights_inputs,
-        outputs=[plot_output, algo_state],
+        outputs=[plot_output, algo_state, explanation_md],
     )
 
     random_button.click(
         fn=randomize_heights,
         inputs=[num_students_input] + heights_inputs,
-        outputs=[plot_output, algo_state] + heights_inputs,
+        outputs=[plot_output, algo_state, explanation_md] + heights_inputs,
     )
 
     step_button.click(
         fn=bubble_sort_step_stream,
         inputs=algo_state,
-        outputs=[plot_output, algo_state],
+        outputs=[plot_output, algo_state, explanation_md],
     )
 
     run_button.click(
         fn=run_to_end,
         inputs=algo_state,
-        outputs=[plot_output, algo_state],
+        outputs=[plot_output, algo_state, explanation_md],
     )
 
     reset_button.click(
         fn=reset_app,
         inputs=num_students_input,
-        outputs=[plot_output, algo_state],
+        outputs=[plot_output, algo_state, explanation_md] + heights_inputs,
     )
 
     num_students_input.change(
         fn=reset_app,
         inputs=num_students_input,
-        outputs=[plot_output, algo_state],
-    )
-
-    num_students_input.change(
-        fn=update_inputs_visibility,
-        inputs=num_students_input,
-        outputs=heights_inputs,
+        outputs=[plot_output, algo_state, explanation_md] + heights_inputs,
     )
 
     demo.load(
         fn=init_app,
         inputs=num_students_input,
-        outputs=[plot_output, algo_state] + heights_inputs,
+        outputs=[plot_output, algo_state, explanation_md] + heights_inputs,
     )
 
 
