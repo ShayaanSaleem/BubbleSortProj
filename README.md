@@ -3,8 +3,18 @@ Bubble Student Height Sorter
 
 ## Demo video/gif/screenshot of test
 
-
+Random Heights Test:
 https://github.com/user-attachments/assets/d94aa3aa-152a-4b01-8fd8-372101b18f52
+
+Already Sorted Test:
+https://github.com/user-attachments/assets/5b0932c3-3324-4f28-aa46-855c2e1522d7
+
+Reverse Order Test:
+https://github.com/user-attachments/assets/2290bffb-c604-40ec-aa38-612e9a97e5ac
+
+Duplicates Test:
+https://github.com/user-attachments/assets/73e6ae1e-a4ba-4668-a1fc-735a27538717
+
 
 
 ## Problem Breakdown & Computational Thinking 
@@ -61,3 +71,4 @@ https://huggingface.co/spaces/ShayaanSaleem/BubbleSortProj/tree/main
 
 ## Author & Acknowledgment
 Shayaan Saleem
+
